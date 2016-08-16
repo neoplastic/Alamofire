@@ -26,9 +26,9 @@ import Foundation
 
 /// Responsible for creating and managing `Request` objects, as well as their underlying `NSURLSession`.
 public class SessionManager {
-
+    
     // MARK: - Helper Types
-
+    
     /// Defines whether the `MultipartFormData` encoding was successful and contains result of the encoding as
     /// associated values.
     ///
@@ -40,60 +40,60 @@ public class SessionManager {
         case success(request: Request, streamingFromDisk: Bool, streamFileURL: URL?)
         case failure(Error)
     }
-
+    
     private enum Downloadable {
         case request(URLRequest)
         case resumeData(Data)
     }
-
+    
     private enum Uploadable {
         case data(Data, URLRequest)
         case file(URL, URLRequest)
         case stream(InputStream, URLRequest)
     }
-
-#if !os(watchOS)
-
+    
+    #if !os(watchOS)
+    
     private enum Streamable {
         case stream(String, Int)
         case netService(NetService)
     }
-
-#endif
-
+    
+    #endif
+    
     // MARK: - Properties
-
+    
     /// A default instance of `SessionManager`, used by top-level Alamofire request methods, and suitable for use
     /// directly for any ad hoc requests.
     public static let `default`: SessionManager = {
         let configuration = URLSessionConfiguration.default
         configuration.httpAdditionalHeaders = SessionManager.defaultHTTPHeaders
-
+        
         return SessionManager(configuration: configuration)
     }()
-
+    
     /// Creates default values for the "Accept-Encoding", "Accept-Language" and "User-Agent" headers.
     public static let defaultHTTPHeaders: [String: String] = {
         // Accept-Encoding HTTP Header; see https://tools.ietf.org/html/rfc7230#section-4.2.3
         let acceptEncoding: String = "gzip;q=1.0, compress;q=0.5"
-
+        
         // Accept-Language HTTP Header; see https://tools.ietf.org/html/rfc7231#section-5.3.5
         let acceptLanguage = Locale.preferredLanguages.prefix(6).enumerated().map { index, languageCode in
             let quality = 1.0 - (Double(index) * 0.1)
             return "\(languageCode);q=\(quality)"
-        }.joined(separator: ", ")
-
+            }.joined(separator: ", ")
+        
         // User-Agent Header; see https://tools.ietf.org/html/rfc7231#section-5.5.3
         let userAgent: String = {
             if let info = Bundle.main.infoDictionary {
                 let executable = info[kCFBundleExecutableKey as String] as? String ?? "Unknown"
                 let bundle = info[kCFBundleIdentifierKey as String] as? String ?? "Unknown"
                 let version = info[kCFBundleVersionKey as String] as? String ?? "Unknown"
-
+                
                 let osNameVersion: String = {
                     let version = ProcessInfo.processInfo.operatingSystemVersion
                     let versionString = "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-
+                    
                     let osName: String = {
                         #if os(iOS)
                             return "iOS"
@@ -109,35 +109,35 @@ public class SessionManager {
                             return "Unknown"
                         #endif
                     }()
-
+                    
                     return "\(osName) \(versionString)"
                 }()
-
+                
                 return "\(executable)/\(bundle) (\(version); \(osNameVersion))"
             }
-
+            
             return "Alamofire"
         }()
-
+        
         return [
             "Accept-Encoding": acceptEncoding,
             "Accept-Language": acceptLanguage,
             "User-Agent": userAgent
         ]
     }()
-
+    
     /// Default memory threshold used when encoding `MultipartFormData` in bytes.
     public static let multipartFormDataEncodingMemoryThreshold: UInt64 = 10_000_000
-
+    
     /// The underlying session.
     public let session: URLSession
-
+    
     /// The session delegate handling all the task and session delegate callbacks.
     public let delegate: SessionDelegate
-
+    
     /// Whether to start requests immediately after being constructed. `true` by default.
     public var startRequestsImmediately: Bool = true
-
+    
     /// The background completion handler closure provided by the UIApplicationDelegate
     /// `application:handleEventsForBackgroundURLSession:completionHandler:` method. By setting the background
     /// completion handler, the SessionDelegate `sessionDidFinishEventsForBackgroundURLSession` closure implementation
@@ -148,11 +148,11 @@ public class SessionManager {
     ///
     /// `nil` by default.
     public var backgroundCompletionHandler: (() -> Void)?
-
+    
     let queue = DispatchQueue(label: "Alamofire Session Manager Queue")
-
+    
     // MARK: - Lifecycle
-
+    
     /// Creates an instance with the specified `configuration`, `delegate` and `serverTrustPolicyManager`.
     ///
     /// - parameter configuration:            The configuration used to construct the managed session.
@@ -170,10 +170,10 @@ public class SessionManager {
     {
         self.delegate = delegate
         self.session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-
+        
         commonInit(serverTrustPolicyManager: serverTrustPolicyManager)
     }
-
+    
     /// Creates an instance with the specified `session`, `delegate` and `serverTrustPolicyManager`.
     ///
     /// - parameter session:                  The URL session.
@@ -188,29 +188,29 @@ public class SessionManager {
         serverTrustPolicyManager: ServerTrustPolicyManager? = nil)
     {
         guard delegate === session.delegate else { return nil }
-
+        
         self.delegate = delegate
         self.session = session
-
+        
         commonInit(serverTrustPolicyManager: serverTrustPolicyManager)
     }
-
+    
     private func commonInit(serverTrustPolicyManager: ServerTrustPolicyManager?) {
         session.serverTrustPolicyManager = serverTrustPolicyManager
-
+        
         delegate.sessionDidFinishEventsForBackgroundURLSession = { [weak self] session in
             guard let strongSelf = self else { return }
             DispatchQueue.main.async { strongSelf.backgroundCompletionHandler?() }
         }
     }
-
+    
     deinit {
         session.invalidateAndCancel()
     }
-
+    
     // MARK: - Data Request
-
-    /// Creates a data `Request` to retrieve the contents of a URL based on the specified `urlString`, `method`, 
+    
+    /// Creates a data `Request` to retrieve the contents of a URL based on the specified `urlString`, `method`,
     /// `parameters`, `encoding` and `headers`.
     ///
     /// - parameter urlString:  The URL string.
@@ -231,10 +231,10 @@ public class SessionManager {
     {
         let urlRequest = URLRequest(method: method, urlString: urlString, headers: headers)
         let encodedURLRequest = encoding.encode(urlRequest, parameters: parameters).0
-
+        
         return request(encodedURLRequest)
     }
-
+    
     /// Creates a data `Request` to retrieve the contents of a URL based on the specified `urlRequest`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -245,22 +245,22 @@ public class SessionManager {
     public func request(_ urlRequest: URLRequestConvertible) -> Request {
         var dataTask: URLSessionDataTask!
         queue.sync { dataTask = self.session.dataTask(with: urlRequest.urlRequest) }
-
+        
         let request = Request(session: session, task: dataTask)
         delegate[request.delegate.task] = request
-
+        
         if startRequestsImmediately {
             request.resume()
         }
-
+        
         return request
     }
-
+    
     // MARK: - Download Request
-
+    
     // MARK: URL Request
-
-    /// Creates a download `Request` to retrieve the contents of a URL based on the specified `urlString`, `method`, 
+    
+    /// Creates a download `Request` to retrieve the contents of a URL based on the specified `urlString`, `method`,
     /// `parameters`, `encoding`, `headers` and save them to the `destination`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -285,10 +285,10 @@ public class SessionManager {
     {
         let urlRequest = URLRequest(method: method, urlString: urlString, headers: headers)
         let encodedURLRequest = encoding.encode(urlRequest, parameters: parameters).0
-
+        
         return download(encodedURLRequest, to: destination)
     }
-
+    
     /// Creates a download `Request` to retrieve the contents of a URL based on the specified `urlRequest` and save
     /// them to the `destination`.
     ///
@@ -306,9 +306,9 @@ public class SessionManager {
     {
         return download(.request(urlRequest.urlRequest), to: destination)
     }
-
+    
     // MARK: Resume Data
-
+    
     /// Creates a download `Request` from the `resumeData` produced from a previous request cancellation to retrieve
     /// the contents of the original request and save them to the `destination`.
     ///
@@ -324,16 +324,16 @@ public class SessionManager {
     public func download(resourceWithin resumeData: Data, to destination: Request.DownloadFileDestination) -> Request {
         return download(.resumeData(resumeData), to: destination)
     }
-
+    
     // MARK: Private - Download Implementation
-
+    
     private func download(
         _ downloadable: Downloadable,
         to destination: Request.DownloadFileDestination)
         -> Request
     {
         var downloadTask: URLSessionDownloadTask!
-
+        
         switch downloadable {
         case .request(let request):
             queue.sync {
@@ -344,28 +344,28 @@ public class SessionManager {
                 downloadTask = self.session.downloadTask(withResumeData: resumeData)
             }
         }
-
+        
         let request = Request(session: session, task: downloadTask)
-
+        
         if let downloadDelegate = request.delegate as? DownloadTaskDelegate {
             downloadDelegate.downloadTaskDidFinishDownloadingToURL = { session, downloadTask, URL in
                 return destination(URL, downloadTask.response as! HTTPURLResponse)
             }
         }
-
+        
         delegate[request.delegate.task] = request
-
+        
         if startRequestsImmediately {
             request.resume()
         }
-
+        
         return request
     }
-
+    
     // MARK: - Upload Request
-
+    
     // MARK: File
-
+    
     /// Creates an upload `Request` from the specified `method`, `urlString` and `headers` for uploading the `file`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -387,7 +387,7 @@ public class SessionManager {
         let urlRequest = URLRequest(method: method, urlString: urlString, headers: headers)
         return upload(fileURL, with: urlRequest)
     }
-
+    
     /// Creates a upload `Request` from the specified `urlRequest` for uploading the `file`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -400,9 +400,9 @@ public class SessionManager {
     public func upload(_ fileURL: URL, with urlRequest: URLRequestConvertible) -> Request {
         return upload(.file(fileURL, urlRequest.urlRequest))
     }
-
+    
     // MARK: Data
-
+    
     /// Creates an upload `Request` from the specified `method`, `urlString` and `headers` for uploading the `data`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -424,7 +424,7 @@ public class SessionManager {
         let urlRequest = URLRequest(method: method, urlString: urlString, headers: headers)
         return upload(data, with: urlRequest)
     }
-
+    
     /// Creates an upload `Request` from the specified `urlRequest` for uploading the `data`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -437,9 +437,9 @@ public class SessionManager {
     public func upload(_ data: Data, with urlRequest: URLRequestConvertible) -> Request {
         return upload(.data(data, urlRequest.urlRequest))
     }
-
+    
     // MARK: InputStream
-
+    
     /// Creates an upload `Request` from the specified `method`, `urlString` and `headers` for uploading the `stream`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -461,7 +461,7 @@ public class SessionManager {
         let urlRequest = URLRequest(method: method, urlString: urlString, headers: headers)
         return upload(stream, with: urlRequest)
     }
-
+    
     /// Creates an upload `Request` from the specified `urlRequest` for uploading the `stream`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -474,9 +474,9 @@ public class SessionManager {
     public func upload(_ stream: InputStream, with urlRequest: URLRequestConvertible) -> Request {
         return upload(.stream(stream, urlRequest.urlRequest))
     }
-
+    
     // MARK: MultipartFormData
-
+    
     /// Encodes `multipartFormData` using `encodingMemoryThreshold` and calls `encodingCompletion` with new
     /// upload `Request` using the `method`, `urlString` and `headers`.
     ///
@@ -511,7 +511,7 @@ public class SessionManager {
         encodingCompletion: ((MultipartFormDataEncodingResult) -> Void)?)
     {
         let urlRequest = URLRequest(method: method, urlString: urlString, headers: headers)
-
+        
         return upload(
             multipartFormData: multipartFormData,
             usingThreshold: encodingMemoryThreshold,
@@ -519,7 +519,7 @@ public class SessionManager {
             encodingCompletion: encodingCompletion
         )
     }
-
+    
     /// Encodes `multipartFormData` using `encodingMemoryThreshold` and calls `encodingCompletion` with new
     /// upload `Request` using the `urlRequest`.
     ///
@@ -552,22 +552,22 @@ public class SessionManager {
         DispatchQueue.global(qos: .utility).async {
             let formData = MultipartFormData()
             multipartFormData(formData)
-
+            
             var urlRequestWithContentType = urlRequest.urlRequest
             urlRequestWithContentType.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
-
+            
             let isBackgroundSession = self.session.configuration.identifier != nil
-
+            
             if formData.contentLength < encodingMemoryThreshold && !isBackgroundSession {
                 do {
                     let data = try formData.encode()
-
+                    
                     let encodingResult = MultipartFormDataEncodingResult.success(
                         request: self.upload(data, with: urlRequestWithContentType),
                         streamingFromDisk: false,
                         streamFileURL: nil
                     )
-
+                    
                     DispatchQueue.main.async { encodingCompletion?(encodingResult) }
                 } catch {
                     DispatchQueue.main.async { encodingCompletion?(.failure(error as NSError)) }
@@ -578,11 +578,11 @@ public class SessionManager {
                 let directoryURL = tempDirectoryURL.appendingPathComponent("org.alamofire.manager/multipart.form.data")
                 let fileName = UUID().uuidString
                 let fileURL = directoryURL.appendingPathComponent(fileName)
-
+                
                 do {
                     try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: nil)
                     try formData.writeEncodedDataToDisk(fileURL)
-
+                    
                     DispatchQueue.main.async {
                         let encodingResult = MultipartFormDataEncodingResult.success(
                             request: self.upload(fileURL, with: urlRequestWithContentType),
@@ -597,13 +597,13 @@ public class SessionManager {
             }
         }
     }
-
+    
     // MARK: Private - Upload Implementation
-
+    
     private func upload(_ uploadable: Uploadable) -> Request {
         var uploadTask: URLSessionUploadTask!
         var HTTPBodyStream: InputStream?
-
+        
         switch uploadable {
         case .data(let data, let request):
             queue.sync {
@@ -617,33 +617,33 @@ public class SessionManager {
             queue.sync {
                 uploadTask = self.session.uploadTask(withStreamedRequest: request)
             }
-
+            
             HTTPBodyStream = stream
         }
-
+        
         let request = Request(session: session, task: uploadTask)
-
+        
         if HTTPBodyStream != nil {
             request.delegate.taskNeedNewBodyStream = { _, _ in
                 return HTTPBodyStream
             }
         }
-
+        
         delegate[request.delegate.task] = request
-
+        
         if startRequestsImmediately {
             request.resume()
         }
-
+        
         return request
     }
-
-#if !os(watchOS)
-
+    
+    #if !os(watchOS)
+    
     // MARK: - Stream Request
-
+    
     // MARK: Hostname and Port
-
+    
     /// Creates a stream `Request` for bidirectional streaming using the `hostname` and `port`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -652,14 +652,15 @@ public class SessionManager {
     /// - parameter port:     The port of the server to connect to.
     ///
     /// - returns: The created stream `Request`.
+    @available(iOS 9.0, *)
     @available(iOSApplicationExtension 9.0, *)
     @discardableResult
     public func stream(withHostName hostName: String, port: Int) -> Request {
         return stream(.stream(hostName, port))
     }
-
+    
     // MARK: NetService
-
+    
     /// Creates a stream `Request` for bidirectional streaming using the `netService`.
     ///
     /// If `startRequestsImmediately` is `true`, the request will have `resume()` called before being returned.
@@ -667,18 +668,20 @@ public class SessionManager {
     /// - parameter netService: The net service used to identify the endpoint.
     ///
     /// - returns: The created stream `Request`.
+    @available(iOS 9.0, *)
     @available(iOSApplicationExtension 9.0, *)
     @discardableResult
     public func stream(with netService: NetService) -> Request {
         return stream(.netService(netService))
     }
-
+    
     // MARK: Private - Stream Implementation
-
+    
+    @available(iOS 9.0, *)
     @available(iOSApplicationExtension 9.0, *)
     private func stream(_ streamable: Streamable) -> Request {
         var streamTask: URLSessionStreamTask!
-
+        
         switch streamable {
         case .stream(let hostName, let port):
             queue.sync {
@@ -689,17 +692,17 @@ public class SessionManager {
                 streamTask = self.session.streamTask(with: netService)
             }
         }
-
+        
         let request = Request(session: session, task: streamTask)
-
+        
         delegate[request.delegate.task] = request
-
+        
         if startRequestsImmediately {
             request.resume()
         }
-
+        
         return request
     }
-
-#endif
+    
+    #endif
 }
