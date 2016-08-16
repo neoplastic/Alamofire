@@ -652,6 +652,7 @@ public class SessionManager {
     /// - parameter port:     The port of the server to connect to.
     ///
     /// - returns: The created stream `Request`.
+    @available(iOSApplicationExtension 9.0, *)
     @discardableResult
     public func stream(withHostName hostName: String, port: Int) -> Request {
         return stream(.stream(hostName, port))
@@ -666,6 +667,7 @@ public class SessionManager {
     /// - parameter netService: The net service used to identify the endpoint.
     ///
     /// - returns: The created stream `Request`.
+    @available(iOSApplicationExtension 9.0, *)
     @discardableResult
     public func stream(with netService: NetService) -> Request {
         return stream(.netService(netService))
@@ -673,6 +675,7 @@ public class SessionManager {
 
     // MARK: Private - Stream Implementation
 
+    @available(iOSApplicationExtension 9.0, *)
     private func stream(_ streamable: Streamable) -> Request {
         var streamTask: URLSessionStreamTask!
 
