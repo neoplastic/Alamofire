@@ -611,15 +611,20 @@ extension Request {
         -> Result<Any>
     {
         guard error == nil else { return .failure(error!) }
-
+        
         if let response = response, emptyDataStatusCodes.contains(response.statusCode) { return .success(NSNull()) }
-
+        
         guard let validData = data, validData.count > 0 else {
             return .failure(AFError.responseSerializationFailed(reason: .inputDataNilOrZeroLength))
         }
-
+        
+        var validDataString = String(data: validData, encoding: String.Encoding.utf8)
+        validDataString?.replacingOccurrences(of: "\"description\":", with: "\"desc\":")
+        
+        let newValidData = validDataString?.data(using: String.Encoding.utf8) ?? validData
+        
         do {
-            let plist = try PropertyListSerialization.propertyList(from: validData, options: options, format: nil)
+            let plist = try PropertyListSerialization.propertyList(from: newValidData, options: options, format: nil)
             return .success(plist)
         } catch {
             return .failure(AFError.responseSerializationFailed(reason: .propertyListSerializationFailed(error: error)))
